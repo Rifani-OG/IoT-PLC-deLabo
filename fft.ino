@@ -38,7 +38,7 @@ void loop() {
   Serial.print("peak freq: "); //dalam Hz
   Serial.print(peakFrequencyX);
 
-  // Format JSON untuk Node-RED
+  // format json untuk Node-RED
   Serial.print("{\"axis\":\"X\", \"peak_freq\":");
   Serial.print(peakFrequencyX);
   Serial.println("}");
