@@ -7,39 +7,29 @@
 #include "SPI.h"
 #include "BluetoothSerial.h"
 
-// ==========================================
-// --- DEFINISI PIN & KONSTANTA ---
-// ==========================================
 #define BUZZER_PIN 14
 #define LED_PIN 4
 #define THROTTLE_PIN 34
-
 #define SD_CS 5  
 #define SPI_SCK 18
 #define SPI_MISO 19
 #define SPI_MOSI 23
-
 #define GPS_RX 16
 #define GPS_TX 17
-
 #define RS485_RX 32
 #define RS485_TX 33
-
 #define LORA_RX 25 
 #define LORA_TX 26 
 
 const float SHUNT_FACTOR = 1.95; 
-
-// --- OBJEK GLOBAL ---
 BluetoothSerial SerialBT;
 bool bt_connected = false;
-
 TinyGPSPlus gps;
 HardwareSerial gpsSerial(2);
 SoftwareSerial loraSerial(LORA_RX, LORA_TX);
 HardwareSerial pzemSerial(1);
 
-// --- LOGGING SD CARD ---
+// LOGGING SD CARD
 int attempt_count = 0;
 bool sd_initialized = false;
 File log_file;
@@ -47,9 +37,9 @@ const char* log_filename = "/coba_telem/log_telem.txt";
 int flush_counter = 0;
 const int FLUSH_EVERY_N_LINES = 10;
 
-// ==========================================
-// --- STRUCT DATA & MUTEX (FREE RTOS) ---
-// ==========================================
+
+// STRUCT DATA & MUTEX (FREE RTOS)
+// 
 struct PowerData {
   float current_mA;
   float bus_voltage_V;
@@ -60,19 +50,18 @@ PowerData latest_power;
 SemaphoreHandle_t power_mutex;
 
 struct VehicleData {
-  double lat;             // Diperbaiki: Harus Double untuk Presisi GPS
-  double lng;             // Diperbaiki: Harus Double untuk Presisi GPS
+  double lat;             
+  double lng;            
   float speedKmph;
-  double totalDistanceKm; // Diperbaiki: Harus Double untuk Presisi Haversine
+  double totalDistanceKm; 
   int satellites;
   int throttlePercent;
 };
 VehicleData latest_vehicle;
 SemaphoreHandle_t vehicle_mutex;
 
-// ==========================================
-// --- FUNGSI UTILITAS ---
-// ==========================================
+
+// FUNGSI UTILITAS
 uint16_t ModbusCRC16(byte *buf, int len) {
   uint16_t crc = 0xFFFF;
   for (int pos = 0; pos < len; pos++) {
@@ -132,20 +121,14 @@ void writeToLog(const char* data) {
         Serial.println("[SD] SD Card belum ada...");
       }
     }
-    return; // Keluar dari fungsi jika masih belum ada SD Card
+    return; 
   }
-
-  // Auto-Reopen SD Card jika sebelumnya sempat putus/terlepas
   if (!log_file) {
     log_file = SD.open(log_filename, FILE_APPEND);
     if (!log_file) return; 
   }
-
-  // --- PERBAIKAN SARAN 1: Keamanan Pointer File ---
   if (log_file.print(data) == 0) {
     log_file.close(); 
-    // Timpa dengan objek File kosong agar logika (!log_file) di atas 
-    // 100% tereksekusi pada siklus berikutnya (lebih aman dari nullptr di ESP32)
     log_file = File(); 
     return;
   }
@@ -164,9 +147,7 @@ void writeToLog(const char* data) {
   }
 }
 
-// ==========================================
-// --- TASK 1: PZEM-017 (POWER) - CORE 1 ---
-// ==========================================
+// TASK 1: PZEM-017 (POWER) - CORE 1 
 void pzem_read(void *pvParameters){
   byte requestPZEM[] = {0x01, 0x04, 0x00, 0x00, 0x00, 0x06, 0x70, 0x08};
   
@@ -206,18 +187,13 @@ void pzem_read(void *pvParameters){
         float v_V = ((buffer[3] << 8) | buffer[4]) / 100.0;
         float i_A = (((buffer[5] << 8) | buffer[6]) / 100.0) / SHUNT_FACTOR; 
         float i_mA = i_A * 1000.0;
-        
-        // Diperbaiki: Explicit Casting ke uint32_t untuk mencegah bug bit-shift overflow 
         uint32_t p_raw = ((uint32_t)buffer[9] << 24) | ((uint32_t)buffer[10] << 16) | ((uint32_t)buffer[7] << 8) | (uint32_t)buffer[8];
         float p_W = (p_raw / 10.0) / SHUNT_FACTOR;
-
-        // Diperbaiki: Integrasi Energi dengan Presisi Murni Double
         unsigned long now = millis();
         double dt_sec = (double)(now - last_pzem_time) / 1000.0;
         last_pzem_time = now;
-        
         total_energy_Ws += ((double)p_W * dt_sec);
-        float e_Wh = (float)(total_energy_Ws / 3600.0); // Casting kembali ke float khusus untuk struct
+        float e_Wh = (float)(total_energy_Ws / 3600.0);
 
         if (xSemaphoreTake(power_mutex, portMAX_DELAY)) {
             latest_power.current_mA = i_mA;
@@ -232,15 +208,12 @@ void pzem_read(void *pvParameters){
   }
 }
 
-// ==========================================
-// --- TASK 2: VEHICLE STATE - CORE 0 ---
-// ==========================================
+
+// TASK 2: VEHICLE STATE - CORE 0
 void vehicle_state_task(void *pvParameters){
-  // Deklarasi presisten di luar loop agar tidak di-reset saat sinyal GPS terputus
   double temp_distance = 0; 
   double last_lat = 0;
   double last_lng = 0;
-  
   double t_lat = 0;
   double t_lng = 0;
   float t_speed = 0;
@@ -248,14 +221,11 @@ void vehicle_state_task(void *pvParameters){
 
   while(true){
     while (gpsSerial.available() > 0) { gps.encode(gpsSerial.read()); }
-    
     t_sat = gps.satellites.value();
-
     if (gps.location.isValid()) { 
       t_lat = gps.location.lat(); 
       t_lng = gps.location.lng(); 
-
-      // Kalkulasi Jarak dengan Threshold Noise Filter (1.5m)
+      
       if (last_lat != 0 && last_lng != 0) {
         double dist_m = TinyGPSPlus::distanceBetween(last_lat, last_lng, t_lat, t_lng);
         if (dist_m > 1.5) { 
@@ -294,9 +264,7 @@ void vehicle_state_task(void *pvParameters){
   }
 }
 
-// ==========================================
-// --- TASK 3: BLUETOOTH - CORE 0 ---
-// ==========================================
+// TASK 3: BLUETOOTH - CORE 0
 void bluetooth_task(void *pvParameters) {
   char bt_payload[250];
   while (1) {
@@ -314,7 +282,6 @@ void bluetooth_task(void *pvParameters) {
 
     if (bt_connected) {
       PowerData p; VehicleData v;
-      
       if (xSemaphoreTake(power_mutex, portMAX_DELAY)) { p = latest_power; xSemaphoreGive(power_mutex); }
       if (xSemaphoreTake(vehicle_mutex, portMAX_DELAY)) { v = latest_vehicle; xSemaphoreGive(vehicle_mutex); }
       
@@ -323,21 +290,17 @@ void bluetooth_task(void *pvParameters) {
                v.lat, v.lng, v.speedKmph, v.satellites, v.throttlePercent,
                p.current_mA, p.bus_voltage_V, p.power_W, p.energy_Wh,
                v.totalDistanceKm, millis());
-              
       SerialBT.print(bt_payload);
     }
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
-// ==========================================
-// --- TASK 4: LORA & SD CARD - CORE 0 ---
-// ==========================================
+// TASK 4: LORA & SD CARD - CORE 0 ---
 void lora_sd_task(void *pvParameters) {
   char log_buffer[350];
   while (1) {
     PowerData p; VehicleData v;
-    
     if (xSemaphoreTake(power_mutex, portMAX_DELAY)) { p = latest_power; xSemaphoreGive(power_mutex); }
     if (xSemaphoreTake(vehicle_mutex, portMAX_DELAY)) { v = latest_vehicle; xSemaphoreGive(vehicle_mutex); }
 
@@ -348,7 +311,6 @@ void lora_sd_task(void *pvParameters) {
              v.totalDistanceKm, millis());
     
     writeToLog(log_buffer); 
-    
     if (loraSerial.availableForWrite() >= strlen(log_buffer)) {
         loraSerial.println(log_buffer);
     }
@@ -356,9 +318,7 @@ void lora_sd_task(void *pvParameters) {
   }
 }
 
-// ==========================================
-// --- SETUP & LOOP ---
-// ==========================================
+// SETUP & LOOP
 void setup() {
   setCpuFrequencyMhz(240);
   Serial.begin(115200);
@@ -373,14 +333,11 @@ void setup() {
   gpsSerial.begin(115200, SERIAL_8N1, GPS_RX, GPS_TX);
   loraSerial.begin(9600); 
   pzemSerial.begin(9600, SERIAL_8N2, RS485_RX, RS485_TX); 
-  
   tone(BUZZER_PIN, 523); delay(150); noTone(BUZZER_PIN); 
   
   if (initLogging()) Serial.println("Logging SD Card AKTIF");
-  
   SerialBT.begin("Rakata_Dashboard"); 
   
-  // Diperbaiki: Kembalikan alokasi memory stack VEHICLE ke 4096 untuk komputasi trigonometri ganda (Haversine)
   xTaskCreatePinnedToCore(bluetooth_task, "BT", 8192, NULL, 6, NULL, 0);
   xTaskCreatePinnedToCore(vehicle_state_task, "VEHICLE", 4096, NULL, 5, NULL, 0);
   xTaskCreatePinnedToCore(lora_sd_task, "TX", 8192, NULL, 4, NULL, 0);
