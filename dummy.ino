@@ -52,16 +52,14 @@ void goToDeepSleep() {
   esp_deep_sleep_start();
 }
 
-// filter function
-float movingAvg(float newVal, float *buffer, int *index, int size) {
-  static float sum = 0;
-  static int count = 0;
-  sum -= buffer[*index];
+// filter function (sum & count now passed per-axis, no longer shared/static)
+float movingAvg(float newVal, float *buffer, float *sum, int *index, int *count, int size) {
+  *sum -= buffer[*index];
   buffer[*index] = newVal;
-  sum += newVal;
+  *sum += newVal;
   *index = (*index + 1) % size;
-  if (count < size) count++;
-  return sum / count;
+  if (*count < size) (*count)++;
+  return *sum / *count;
 }
 
 // mqtt reconnect
@@ -92,6 +90,8 @@ void TaskSensor(void *pvParameters) {
   float bufY[MOVING_AVG_WINDOW] = {0};
   float bufZ[MOVING_AVG_WINDOW] = {0};
   int idxX = 0, idxY = 0, idxZ = 0;
+  float sumX = 0, sumY = 0, sumZ = 0;
+  int countX = 0, countY = 0, countZ = 0;
 
   while (1) {
     // dummy data
@@ -101,6 +101,8 @@ void TaskSensor(void *pvParameters) {
     float ampY = 1.0 + (elapsed / 45.0) * 2.5;
     if (ampY > 3.5) ampY = 3.5;
 
+    double sumSqX = 0, sumSqY = 0, sumSqZ = 0;
+
     // Sampling
     for (int i = 0; i < SAMPLES; i++) {
       float t = (float)i / SAMPLING_FREQ;
@@ -108,10 +110,14 @@ void TaskSensor(void *pvParameters) {
       float rawY = ampY * sin(2 * PI * freqY * t) + (random(-50,50)/1000.0);
       float rawZ = 0.6 * sin(2 * PI * 25.0 * t) + (random(-50,50)/1000.0);
 
-      // EMI Filter / Digital Low-Pass
-      float filtX = movingAvg(rawX, bufX, &idxX, MOVING_AVG_WINDOW);
-      float filtY = movingAvg(rawY, bufY, &idxY, MOVING_AVG_WINDOW);
-      float filtZ = movingAvg(rawZ, bufZ, &idxZ, MOVING_AVG_WINDOW);
+      // EMI Filter / Digital Low-Pass (per-axis, isolated accumulators)
+      float filtX = movingAvg(rawX, bufX, &sumX, &idxX, &countX, MOVING_AVG_WINDOW);
+      float filtY = movingAvg(rawY, bufY, &sumY, &idxY, &countY, MOVING_AVG_WINDOW);
+      float filtZ = movingAvg(rawZ, bufZ, &sumZ, &idxZ, &countZ, MOVING_AVG_WINDOW);
+
+      sumSqX += (double)filtX * filtX;
+      sumSqY += (double)filtY * filtY;
+      sumSqZ += (double)filtZ * filtZ;
 
       vRealX[i] = filtX;
       vRealY[i] = filtY;
@@ -120,6 +126,10 @@ void TaskSensor(void *pvParameters) {
 
       delayMicroseconds(sampling_period_us);
     }
+
+    double rmsX = sqrt(sumSqX / SAMPLES);
+    double rmsY = sqrt(sumSqY / SAMPLES);
+    double rmsZ = sqrt(sumSqZ / SAMPLES);
 
     // FFT
     FFT_X.windowing(FFTWindow::Hamming, FFTDirection::Forward);
@@ -137,17 +147,6 @@ void TaskSensor(void *pvParameters) {
     double peakX = FFT_X.majorPeak();
     double peakY = FFT_Y.majorPeak();
     double peakZ = FFT_Z.majorPeak();
-
-    // RMS value
-    double rmsX = 0, rmsY = 0, rmsZ = 0;
-    for (int i = 0; i < SAMPLES/2; i++) {
-      rmsX += vRealX[i]*vRealX[i];
-      rmsY += vRealY[i]*vRealY[i];
-      rmsZ += vRealZ[i]*vRealZ[i];
-    }
-    rmsX = sqrt(rmsX/(SAMPLES/2));
-    rmsY = sqrt(rmsY/(SAMPLES/2));
-    rmsZ = sqrt(rmsZ/(SAMPLES/2));
 
     // payload to mqtt
     MqttMessage msg;
