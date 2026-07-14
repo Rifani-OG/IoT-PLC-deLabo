@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CIREn-IoT | Motor Vibration Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f4f6f9;
+            color: #1e293b;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            max-width: 1100px;
+            width: 100%;
+        }
+        .header {
+            text-align: center;
+            padding: 16px 0;
+            border-bottom: 2px solid #cbd5e1;
+            margin-bottom: 28px;
+        }
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #0f172a;
+        }
+        .header p {
+            color: #475569;
+            font-size: 0.95rem;
+            margin-top: 4px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        .card {
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 18px 16px 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+        .card .axis-label {
+            display: inline-block;
+            padding: 2px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+        .axis-x { background: #fecaca; color: #991b1b; }
+        .axis-y { background: #bfdbfe; color: #1e3a8a; }
+        .axis-z { background: #bbf7d0; color: #14532d; }
+
+        .gauge-wrap {
+            position: relative;
+            width: 130px;
+            height: 90px;
+            margin: 0 auto 6px;
+        }
+        .gauge-wrap svg {
+            transform: rotate(-90deg);
+            width: 130px;
+            height: 90px;
+        }
+        .gauge-bg {
+            fill: none;
+            stroke: #e2e8f0;
+            stroke-width: 10;
+        }
+        .gauge-fg {
+            fill: none;
+            stroke-width: 10;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.2s;
+        }
+        .gauge-text {
+            position: absolute;
+            bottom: 6px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.2;
+        }
+        .gauge-unit {
+            font-size: 0.7rem;
+            font-weight: 400;
+            color: #64748b;
+            margin-left: 2px;
+        }
+        .rms-value {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: #475569;
+        }
+        .rms-value span {
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        .status-box {
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 14px 24px;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .status-label {
+            font-size: 0.95rem;
+            color: #475569;
+        }
+        #overallStatus {
+            font-size: 1.3rem;
+            font-weight: 700;
+            padding: 4px 18px;
+            border-radius: 30px;
+        }
+        .normal {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+        .warning {
+            background: #fef9c3;
+            color: #854d0e;
+            border: 1px solid #fde047;
+            animation: pulse 1.8s infinite;
+        }
+        .danger {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+            animation: pulse 0.9s infinite;
+        }
+        .offline {
+            background: #e2e8f0;
+            color: #475569;
+            border: 1px solid #94a3b8;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.65; }
+            100% { opacity: 1; }
+        }
+        @media (max-width: 700px) {
+            .grid { grid-template-columns: 1fr; }
+            .status-box { flex-direction: column; gap: 8px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>CIREn-IoT: Motor Vibration Monitor</h1>
+        <p>Live FFT data from MEMS sensor (1 Hz update)</p>
+    </div>
+
+    <div class="grid">
+        <!-- X-axis card -->
+        <div class="card">
+            <span class="axis-label axis-x">X axis</span>
+            <div class="gauge-wrap">
+                <svg viewBox="0 0 120 80">
+                    <circle class="gauge-bg" cx="60" cy="60" r="38"/>
+                    <circle id="circleX" class="gauge-fg" cx="60" cy="60" r="38" stroke="#dc2626" stroke-dasharray="238.76" stroke-dashoffset="238.76"/>
+                </svg>
+                <div class="gauge-text"><span id="valX">0</span><span class="gauge-unit">Hz</span></div>
+            </div>
+            <div class="rms-value">RMS: <span id="rmsX">0.00</span> m/s²</div>
+        </div>
+
+        <!-- Y-axis card -->
+        <div class="card">
+            <span class="axis-label axis-y">Y axis</span>
+            <div class="gauge-wrap">
+                <svg viewBox="0 0 120 80">
+                    <circle class="gauge-bg" cx="60" cy="60" r="38"/>
+                    <circle id="circleY" class="gauge-fg" cx="60" cy="60" r="38" stroke="#2563eb" stroke-dasharray="238.76" stroke-dashoffset="238.76"/>
+                </svg>
+                <div class="gauge-text"><span id="valY">0</span><span class="gauge-unit">Hz</span></div>
+            </div>
+            <div class="rms-value">RMS: <span id="rmsY">0.00</span> m/s²</div>
+        </div>
+
+        <!-- Z-axis card -->
+        <div class="card">
+            <span class="axis-label axis-z">Z axis</span>
+            <div class="gauge-wrap">
+                <svg viewBox="0 0 120 80">
+                    <circle class="gauge-bg" cx="60" cy="60" r="38"/>
+                    <circle id="circleZ" class="gauge-fg" cx="60" cy="60" r="38" stroke="#16a34a" stroke-dasharray="238.76" stroke-dashoffset="238.76"/>
+                </svg>
+                <div class="gauge-text"><span id="valZ">0</span><span class="gauge-unit">Hz</span></div>
+            </div>
+            <div class="rms-value">RMS: <span id="rmsZ">0.00</span> m/s²</div>
+        </div>
+    </div>
+
+    <div class="status-box">
+        <span class="status-label">Fault prediction status</span>
+        <span id="overallStatus" class="normal">Normal</span>
+        <span class="status-label" id="lastUpdate">--:--:--</span>
+    </div>
+</div>
+
+<script>
+    var wsUri = "ws://" + window.location.hostname + ":1880/ws/vibration";
+    var ws = new WebSocket(wsUri);
+    var reconnectInterval = 2000;
+
+    function connectWS() {
+        ws = new WebSocket(wsUri);
+        ws.onopen = function() { console.log("WebSocket connected"); };
+        ws.onmessage = function(event) { updateDashboard(JSON.parse(event.data)); };
+        ws.onerror = function() {
+            document.getElementById("overallStatus").innerHTML = "Connection lost";
+            document.getElementById("overallStatus").className = "offline";
+        };
+        ws.onclose = function() { setTimeout(connectWS, reconnectInterval); };
+    }
+    connectWS();
+
+    function setGauge(circleId, value, maxVal) {
+        maxVal = maxVal || 300;
+        var circle = document.getElementById(circleId);
+        if (!circle) return;
+        var circumference = 238.76; // 2 * PI * 38
+        var percent = Math.min(value / maxVal, 1);
+        circle.style.strokeDashoffset = circumference - (percent * circumference);
+    }
+
+    function updateDashboard(data) {
+        document.getElementById("valX").innerText = data.peak_hz_X.toFixed(1);
+        document.getElementById("valY").innerText = data.peak_hz_Y.toFixed(1);
+        document.getElementById("valZ").innerText = data.peak_hz_Z.toFixed(1);
+        document.getElementById("rmsX").innerText = data.rms_X.toFixed(2);
+        document.getElementById("rmsY").innerText = data.rms_Y.toFixed(2);
+        document.getElementById("rmsZ").innerText = data.rms_Z.toFixed(2);
+
+        setGauge("circleX", data.peak_hz_X);
+        setGauge("circleY", data.peak_hz_Y);
+        setGauge("circleZ", data.peak_hz_Z);
+
+        var now = new Date();
+        document.getElementById("lastUpdate").innerHTML = now.toLocaleTimeString('en-US', { hour12: false });
+
+        var statusEl = document.getElementById("overallStatus");
+        var rmsTotal = Math.sqrt(
+            Math.pow(data.rms_X, 2) +
+            Math.pow(data.rms_Y, 2) +
+            Math.pow(data.rms_Z, 2)
+        );
+
+        if (data.peak_hz_Y > 100 || rmsTotal > 15) {
+            statusEl.innerHTML = "Critical (possible fault)";
+            statusEl.className = "danger";
+        } else if (data.peak_hz_Y > 60 || rmsTotal > 8) {
+            statusEl.innerHTML = "Warning (anomaly)";
+            statusEl.className = "warning";
+        } else {
+            statusEl.innerHTML = "Normal";
+            statusEl.className = "normal";
+        }
+    }
+</script>
+</body>
+</html>
