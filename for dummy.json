@@ -1,0 +1,159 @@
+[
+    {
+        "id": "26dbb1b569445930",
+        "type": "tab",
+        "label": "Flow 2",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "mqtt_in",
+        "type": "mqtt in",
+        "z": "26dbb1b569445930",
+        "name": "Data MEMS",
+        "topic": "ciren/motor1/vibration",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "mqtt_broker_local",
+        "nl": false,
+        "rap": false,
+        "inputs": 0,
+        "x": 130,
+        "y": 160,
+        "wires": [
+            [
+                "filter_emi"
+            ]
+        ]
+    },
+    {
+        "id": "filter_emi",
+        "type": "function",
+        "z": "26dbb1b569445930",
+        "name": "Filter EMI & Outlier",
+        "func": "var d = msg.payload;\n//calculate total RMS\nvar rmsT = Math.sqrt(d.rms_X*d.rms_X + d.rms_Y*d.rms_Y + d.rms_Z*d.rms_Z);\n// delete data with extream noise ove 300Hz or total RMS over 50\nif (d.peak_hz_X > 300 || d.peak_hz_Y > 300 || d.peak_hz_Z > 300 || rmsT > 50) {\n    return null;\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 160,
+        "wires": [
+            [
+                "ws_out"
+            ]
+        ]
+    },
+    {
+        "id": "ws_out",
+        "type": "websocket out",
+        "z": "26dbb1b569445930",
+        "name": "Stream to HTML",
+        "server": "ws_listener",
+        "client": "",
+        "x": 640,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "http_in",
+        "type": "http in",
+        "z": "26dbb1b569445930",
+        "name": "UI page",
+        "url": "/monitoring",
+        "method": "get",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 150,
+        "y": 260,
+        "wires": [
+            [
+                "template_html"
+            ]
+        ]
+    },
+    {
+        "id": "template_html",
+        "type": "template",
+        "z": "26dbb1b569445930",
+        "name": "HTML Dashboard",
+        "field": "payload",
+        "fieldType": "msg",
+        "format": "handlebars",
+        "syntax": "mustache",
+        "template": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>CIREn-IoT | Motor Vibration Monitor</title>\n    <style>\n        * {\n            margin: 0;\n            padding: 0;\n            box-sizing: border-box;\n        }\n        body {\n            font-family: Arial, Helvetica, sans-serif;\n            background: #f4f6f9;\n            color: #1e293b;\n            padding: 20px;\n            display: flex;\n            flex-direction: column;\n            align-items: center;\n        }\n        .container {\n            max-width: 1100px;\n            width: 100%;\n        }\n        .header {\n            text-align: center;\n            padding: 16px 0;\n            border-bottom: 2px solid #cbd5e1;\n            margin-bottom: 28px;\n        }\n        .header h1 {\n            font-size: 1.8rem;\n            font-weight: 600;\n            color: #0f172a;\n        }\n        .header p {\n            color: #475569;\n            font-size: 0.95rem;\n            margin-top: 4px;\n        }\n        .grid {\n            display: grid;\n            grid-template-columns: repeat(3, 1fr);\n            gap: 20px;\n            margin-bottom: 24px;\n        }\n        .card {\n            background: #ffffff;\n            border-radius: 10px;\n            padding: 18px 16px 20px;\n            box-shadow: 0 1px 3px rgba(0,0,0,0.1);\n            text-align: center;\n            border: 1px solid #e2e8f0;\n        }\n        .card .axis-label {\n            display: inline-block;\n            padding: 2px 12px;\n            border-radius: 12px;\n            font-size: 0.75rem;\n            font-weight: 700;\n            text-transform: uppercase;\n            letter-spacing: 0.5px;\n            margin-bottom: 10px;\n        }\n        .axis-x { background: #fecaca; color: #991b1b; }\n        .axis-y { background: #bfdbfe; color: #1e3a8a; }\n        .axis-z { background: #bbf7d0; color: #14532d; }\n\n        .gauge-wrap {\n            position: relative;\n            width: 130px;\n            height: 90px;\n            margin: 0 auto 6px;\n        }\n        .gauge-wrap svg {\n            transform: rotate(-90deg);\n            width: 130px;\n            height: 90px;\n        }\n        .gauge-bg {\n            fill: none;\n            stroke: #e2e8f0;\n            stroke-width: 10;\n        }\n        .gauge-fg {\n            fill: none;\n            stroke-width: 10;\n            stroke-linecap: round;\n            transition: stroke-dashoffset 0.2s;\n        }\n        .gauge-text {\n            position: absolute;\n            bottom: 6px;\n            left: 50%;\n            transform: translateX(-50%);\n            font-size: 1.5rem;\n            font-weight: 700;\n            color: #0f172a;\n            line-height: 1.2;\n        }\n        .gauge-unit {\n            font-size: 0.7rem;\n            font-weight: 400;\n            color: #64748b;\n            margin-left: 2px;\n        }\n        .rms-value {\n            margin-top: 8px;\n            font-size: 0.85rem;\n            color: #475569;\n        }\n        .rms-value span {\n            font-weight: 600;\n            color: #0f172a;\n        }\n\n        .status-box {\n            background: #ffffff;\n            border-radius: 10px;\n            padding: 14px 24px;\n            border: 1px solid #e2e8f0;\n            display: flex;\n            justify-content: space-between;\n            align-items: center;\n            flex-wrap: wrap;\n        }\n        .status-label {\n            font-size: 0.95rem;\n            color: #475569;\n        }\n        #overallStatus {\n            font-size: 1.3rem;\n            font-weight: 700;\n            padding: 4px 18px;\n            border-radius: 30px;\n        }\n        .normal {\n            background: #dcfce7;\n            color: #166534;\n            border: 1px solid #86efac;\n        }\n        .warning {\n            background: #fef9c3;\n            color: #854d0e;\n            border: 1px solid #fde047;\n            animation: pulse 1.8s infinite;\n        }\n        .danger {\n            background: #fee2e2;\n            color: #991b1b;\n            border: 1px solid #fca5a5;\n            animation: pulse 0.9s infinite;\n        }\n        .offline {\n            background: #e2e8f0;\n            color: #475569;\n            border: 1px solid #94a3b8;\n        }\n        @keyframes pulse {\n            0% { opacity: 1; }\n            50% { opacity: 0.65; }\n            100% { opacity: 1; }\n        }\n        @media (max-width: 700px) {\n            .grid { grid-template-columns: 1fr; }\n            .status-box { flex-direction: column; gap: 8px; }\n        }\n    </style>\n</head>\n<body>\n<div class=\"container\">\n    <div class=\"header\">\n        <h1>CIREn-IoT: Motor Vibration Monitor</h1>\n        <p>Live FFT data from MEMS sensor (1 Hz update)</p>\n    </div>\n\n    <div class=\"grid\">\n        <!-- X-axis card -->\n        <div class=\"card\">\n            <span class=\"axis-label axis-x\">X axis</span>\n            <div class=\"gauge-wrap\">\n                <svg viewBox=\"0 0 120 80\">\n                    <circle class=\"gauge-bg\" cx=\"60\" cy=\"60\" r=\"38\"/>\n                    <circle id=\"circleX\" class=\"gauge-fg\" cx=\"60\" cy=\"60\" r=\"38\" stroke=\"#dc2626\" stroke-dasharray=\"238.76\" stroke-dashoffset=\"238.76\"/>\n                </svg>\n                <div class=\"gauge-text\"><span id=\"valX\">0</span><span class=\"gauge-unit\">Hz</span></div>\n            </div>\n            <div class=\"rms-value\">RMS: <span id=\"rmsX\">0.00</span> m/s²</div>\n        </div>\n\n        <!-- Y-axis card -->\n        <div class=\"card\">\n            <span class=\"axis-label axis-y\">Y axis</span>\n            <div class=\"gauge-wrap\">\n                <svg viewBox=\"0 0 120 80\">\n                    <circle class=\"gauge-bg\" cx=\"60\" cy=\"60\" r=\"38\"/>\n                    <circle id=\"circleY\" class=\"gauge-fg\" cx=\"60\" cy=\"60\" r=\"38\" stroke=\"#2563eb\" stroke-dasharray=\"238.76\" stroke-dashoffset=\"238.76\"/>\n                </svg>\n                <div class=\"gauge-text\"><span id=\"valY\">0</span><span class=\"gauge-unit\">Hz</span></div>\n            </div>\n            <div class=\"rms-value\">RMS: <span id=\"rmsY\">0.00</span> m/s²</div>\n        </div>\n\n        <!-- Z-axis card -->\n        <div class=\"card\">\n            <span class=\"axis-label axis-z\">Z axis</span>\n            <div class=\"gauge-wrap\">\n                <svg viewBox=\"0 0 120 80\">\n                    <circle class=\"gauge-bg\" cx=\"60\" cy=\"60\" r=\"38\"/>\n                    <circle id=\"circleZ\" class=\"gauge-fg\" cx=\"60\" cy=\"60\" r=\"38\" stroke=\"#16a34a\" stroke-dasharray=\"238.76\" stroke-dashoffset=\"238.76\"/>\n                </svg>\n                <div class=\"gauge-text\"><span id=\"valZ\">0</span><span class=\"gauge-unit\">Hz</span></div>\n            </div>\n            <div class=\"rms-value\">RMS: <span id=\"rmsZ\">0.00</span> m/s²</div>\n        </div>\n    </div>\n\n    <div class=\"status-box\">\n        <span class=\"status-label\">Fault prediction status</span>\n        <span id=\"overallStatus\" class=\"normal\">Normal</span>\n        <span class=\"status-label\" id=\"lastUpdate\">--:--:--</span>\n    </div>\n</div>\n\n<script>\n    var wsUri = \"ws://\" + window.location.hostname + \":1880/ws/vibration\";\n    var ws = new WebSocket(wsUri);\n    var reconnectInterval = 2000;\n\n    function connectWS() {\n        ws = new WebSocket(wsUri);\n        ws.onopen = function() { console.log(\"WebSocket connected\"); };\n        ws.onmessage = function(event) { updateDashboard(JSON.parse(event.data)); };\n        ws.onerror = function() {\n            document.getElementById(\"overallStatus\").innerHTML = \"Connection lost\";\n            document.getElementById(\"overallStatus\").className = \"offline\";\n        };\n        ws.onclose = function() { setTimeout(connectWS, reconnectInterval); };\n    }\n    connectWS();\n\n    function setGauge(circleId, value, maxVal) {\n        maxVal = maxVal || 300;\n        var circle = document.getElementById(circleId);\n        if (!circle) return;\n        var circumference = 238.76; // 2 * PI * 38\n        var percent = Math.min(value / maxVal, 1);\n        circle.style.strokeDashoffset = circumference - (percent * circumference);\n    }\n\n    function updateDashboard(data) {\n        document.getElementById(\"valX\").innerText = data.peak_hz_X.toFixed(1);\n        document.getElementById(\"valY\").innerText = data.peak_hz_Y.toFixed(1);\n        document.getElementById(\"valZ\").innerText = data.peak_hz_Z.toFixed(1);\n        document.getElementById(\"rmsX\").innerText = data.rms_X.toFixed(2);\n        document.getElementById(\"rmsY\").innerText = data.rms_Y.toFixed(2);\n        document.getElementById(\"rmsZ\").innerText = data.rms_Z.toFixed(2);\n\n        setGauge(\"circleX\", data.peak_hz_X);\n        setGauge(\"circleY\", data.peak_hz_Y);\n        setGauge(\"circleZ\", data.peak_hz_Z);\n\n        var now = new Date();\n        document.getElementById(\"lastUpdate\").innerHTML = now.toLocaleTimeString('en-US', { hour12: false });\n\n        var statusEl = document.getElementById(\"overallStatus\");\n        var rmsTotal = Math.sqrt(\n            Math.pow(data.rms_X, 2) +\n            Math.pow(data.rms_Y, 2) +\n            Math.pow(data.rms_Z, 2)\n        );\n\n        if (data.peak_hz_Y > 100 || rmsTotal > 15) {\n            statusEl.innerHTML = \"Critical (possible fault)\";\n            statusEl.className = \"danger\";\n        } else if (data.peak_hz_Y > 60 || rmsTotal > 8) {\n            statusEl.innerHTML = \"Warning (anomaly)\";\n            statusEl.className = \"warning\";\n        } else {\n            statusEl.innerHTML = \"Normal\";\n            statusEl.className = \"normal\";\n        }\n    }\n</script>\n</body>\n</html>",
+        "output": "str",
+        "x": 410,
+        "y": 260,
+        "wires": [
+            [
+                "http_res"
+            ]
+        ]
+    },
+    {
+        "id": "http_res",
+        "type": "http response",
+        "z": "26dbb1b569445930",
+        "name": "to web",
+        "statusCode": "",
+        "headers": {},
+        "x": 630,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "mqtt_broker_local",
+        "type": "mqtt-broker",
+        "name": "Mosquitto Lokal",
+        "broker": "40de46779e2d4b859adacde420d9ce62.s1.eu.hivemq.cloud",
+        "port": "8883",
+        "tls": "9dac2f33980d8f8f",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": true,
+        "compatmode": false,
+        "protocolVersion": 4,
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "ws_listener",
+        "type": "websocket-listener",
+        "path": "/ws/vibration",
+        "wholemsg": "false"
+    },
+    {
+        "id": "9dac2f33980d8f8f",
+        "type": "tls-config",
+        "name": "",
+        "cert": "",
+        "key": "",
+        "ca": "",
+        "certname": "",
+        "keyname": "",
+        "caname": "",
+        "servername": "40de46779e2d4b859adacde420d9ce62.s1.eu.hivemq.cloud",
+        "verifyservercert": true,
+        "alpnprotocol": ""
+    }
+]
