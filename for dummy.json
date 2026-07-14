@@ -109,7 +109,7 @@
     {
         "id": "mqtt_broker_local",
         "type": "mqtt-broker",
-        "name": "Mosquitto Lokal",
+        "name": "Mosquitto Hive MQ",
         "broker": "40de46779e2d4b859adacde420d9ce62.s1.eu.hivemq.cloud",
         "port": "8883",
         "tls": "9dac2f33980d8f8f",
